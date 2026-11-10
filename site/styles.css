@@ -1307,3 +1307,87 @@ footer span {
     padding: 26px;
   }
 }
+/* Positionstabelle: komfortabler horizontaler Scroll auf Mobilgeräten */
+.table-scroll { overflow-x: auto; max-width: 100%; }
+.table-scroll table { min-width: max-content; }
+
+/* Positionsanalyse: SwiftUI-inspired surfaces, responsive 4x2/8x1 matrix.
+   The club's black, warm yellow and red identity is retained with subtle surfaces. */
+:root {
+  --bg: #f6f5f2;
+  --paper: #ffffff;
+  --ink: #19191c;
+  --muted: #69676c;
+  --line: #e7e5e4;
+  --primary: #b91621;
+  --primary-hover: #90101b;
+  --accent: #f4be19;
+  --focus: #ad6612;
+  --sidebar: #171317;
+  --sidebar-hover: #3c2026;
+  --sidebar-border: #493035;
+  --topbar: #faf9f6;
+  --table-head: #f8f6f0;
+}
+.card { border-radius: 18px; box-shadow: 0 2px 16px rgba(26,20,22,.035); }
+button { border-radius: 11px; transition: background-color .15s ease, border-color .15s ease, transform .15s ease; }
+button:active { transform: scale(.985); }
+.slot-grid { display: grid; grid-template-columns: repeat(1,minmax(0,1fr)); gap: 12px; margin-top: 19px; }
+.slot-card { min-width:0; background: #fbfaf8; border:1px solid var(--line); border-radius:16px; padding:15px; }
+.slot-number { color:#8c1b23; font-size:.77rem; font-weight:800; letter-spacing:.08em; }
+.slot-candidates { display:grid; gap:9px; margin-top:12px; }
+.slot-candidate { display:grid; grid-template-columns: 24px minmax(0,1fr) auto; gap:9px; align-items:center; font-size:.9rem; }
+.slot-rank { display:grid; place-items:center; width:24px; height:24px; background:#f2ece9; color:#6d6261; border-radius:8px; font-weight:700; font-variant-numeric:tabular-nums; }
+.slot-candidate:first-child .slot-rank { background:#f9e7a4; color:#5a4000; }
+.slot-name { overflow-wrap:anywhere; }
+.slot-percent { font-variant-numeric:tabular-nums; white-space:nowrap; }
+.position-legend { color:var(--muted); line-height:1.55; font-size:.9rem; max-width:850px; }
+.position-player-list { display:grid; gap:14px; margin-top:18px; }
+.position-player { border:1px solid var(--line); border-radius:18px; padding:14px; background: #fff; min-width:0; }
+.position-player-heading { display:flex; gap:10px; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; margin-bottom:14px; }
+.position-player-identity { min-width:0; }
+.position-player-heading h3 { margin:0; font-size:1.06rem; line-height:1.35; letter-spacing:-.02em; }
+.position-player-meta { margin:5px 0 0; color:var(--muted); font-size:.84rem; line-height:1.45; }
+.position-favorite { padding:6px 10px; background:#fcefc3; color:#634600; border-radius:999px; white-space:nowrap; font-weight:700; font-size:.78rem; }
+.position-matrix { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; }
+.position-cell { min-width:0; min-height:70px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:7px; background:#f6f5f3; border:1px solid #eeece8; border-radius:12px; padding:9px 3px; text-align:center; }
+.position-cell-label { color:#6a6664; font-size:.72rem; letter-spacing:.035em; font-weight:750; }
+.position-cell-value { color:#282529; font-size:clamp(.78rem,2.8vw,.97rem); font-weight:750; white-space:nowrap; font-variant-numeric:tabular-nums; letter-spacing:-.035em; }
+.position-cell-count { color:#6c6264; font-size:.85em; font-weight:650; }
+.position-cell.is-strong { background:#fff4cd; border-color:#f5db89; }
+.position-cell.is-favorite { background:#fce9a2; border-color:#d7a725; box-shadow:inset 0 0 0 1px #e9c45c; }
+.position-cell.is-unknown { color:#888; background:#faf9f8; }
+.position-detail { margin-top:12px; color:#851d26; background:transparent; border-color:transparent; padding:9px 10px; font-size:.87rem; }
+.position-detail:hover { background:#fff3e6; }
+@media (min-width:560px) { .slot-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .position-player { padding:18px; } .position-matrix { gap:8px; } .position-cell { min-height:76px; } }
+@media (min-width:850px) { .slot-grid { grid-template-columns:repeat(4,minmax(0,1fr)); } .position-matrix { grid-template-columns:repeat(8,minmax(0,1fr)); } }
+@media (max-width:390px) { .position-player { padding:10px; } .position-cell { min-height:66px; padding:7px 1px; } .position-cell-value { font-size:.75rem; } .position-cell-label { font-size:.67rem; } }
+@media (prefers-reduced-motion:reduce) { button { transition:none; } button:active { transform:none; } }
+
+/* Browser-Aktualisierung: breite Touch-Ziele, dezenter Systemkarten-Stil. */
+.position-section .toolbar input { min-height: 44px; }
+.position-section .position-matrix { min-width: 0; }
+#positions-progress { margin: 12px 0 0; overflow-wrap: anywhere; line-height: 1.55; }
+@media (max-width: 700px) {
+  #content > .card:first-child button.primary { min-height: 48px; width: 100%; }
+}
+
+/* Taktik-Assistent: Mobile-first, ruhige Systemflächen in Vereinsfarben */
+.tactic-controls {display:flex;flex-wrap:wrap;align-items:end;gap:12px;margin:18px 0;}
+.tactic-controls label {display:grid;gap:7px;min-width:190px;color:var(--muted);font-size:.82rem;font-weight:700;}
+.tactic-controls select {min-height:44px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--paper);color:var(--ink);font:inherit;}
+.tactic-controls button {min-height:44px;}
+.tactic-mode-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:12px 0;}
+.tactic-mode {min-width:0;min-height:48px;border:1px solid var(--line);background:#f8f7f5;color:var(--ink);font-weight:700;}
+.tactic-mode.is-active {background:#fff0b7;border-color:#caa02b;box-shadow:inset 0 0 0 1px #e4bc4d;color:#654408;}
+.tactic-metrics {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:16px 0;}
+.tactic-metrics .metric {min-width:0;}
+.tactic-lineup {display:grid;gap:8px;margin-top:16px;}
+.tactic-row {display:grid;grid-template-columns:55px minmax(0,1fr) auto;align-items:center;gap:10px;padding:12px;background:#f8f7f5;border:1px solid var(--line);border-radius:13px;font-variant-numeric:tabular-nums;}
+.tactic-slot {font-size:.72rem;color:#9b222b;font-weight:800;white-space:nowrap;}
+.tactic-player {min-width:0;font-weight:650;overflow-wrap:anywhere;}
+.tactic-row strong {font-size:.9rem;}
+.tactic-bar {grid-column:2/4;height:5px;border-radius:99px;background:#e8e4db;overflow:hidden;}
+.tactic-bar span {display:block;height:100%;background:#c89b22;border-radius:99px;}
+@media (min-width:730px){.tactic-mode-grid {grid-template-columns:repeat(4,minmax(0,1fr));}.tactic-metrics{grid-template-columns:repeat(4,minmax(0,1fr));}}
+@media (max-width:380px){.tactic-mode-grid {grid-template-columns:1fr 1fr;}.tactic-row {gap:6px;padding:9px;}}

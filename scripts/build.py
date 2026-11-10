@@ -25,7 +25,8 @@ def public_data(snapshot):
                   season=snapshot['event']['event'].get('saison', {}).get('name'),
                   errors=snapshot.get('errors', []), sources=snapshot.get('sources', []),
                   schedule_complete=all(r is not None for r in snapshot['rounds'].values()),
-                  teams=[], matches=[], standings=[], performances=[], results=[], statistics=[])
+                  teams=[], matches=[], standings=[], performances=[], results=[], statistics=[],
+                  position_analyses={})
     for team in snapshot['participants']:
         players, gaps = az.team_players(snapshot, team['id'], cutoff)
         public = []
@@ -37,6 +38,9 @@ def public_data(snapshot):
             public.append(row)
         result['teams'].append(dict(id=team['id'], name=team['displayName'],
                                     players=public, gaps=gaps))
+    # Statische Webseite: Positionsmodelle beim Datenbuild für jede Mannschaft vorberechnen.
+    for team in snapshot['participants']:
+        result['position_analyses'][str(team['id'])] = az.opponent_positions(snapshot, team['id'], cutoff=cutoff)
     for match in az.matches(snapshot):
         home, away = match.get('participantHome', {}), match.get('participantGuest', {})
         result['matches'].append(dict(id=match['id'], home=home.get('id'), away=away.get('id'),
@@ -102,6 +106,10 @@ def build(output, snapshot=None, refresh=False, write_data=False):
         api.atomic_json(ROOT/'site/data/league.json', data)
     shutil.copytree(ROOT/'site', output, dirs_exist_ok=True)
     api.atomic_json(output/'data/league.json', data)
+    # Das Projekt-HTML liegt im Repository-Stamm, die Pages-Dateien unter site/.
+    # Im dist-Build müssen die Asset-Pfade deshalb auf die flache Struktur zeigen.
+    html = (ROOT/'index.html').read_text(encoding='utf-8').replace('./site/', './')
+    (output/'index.html').write_text(html, encoding='utf-8')
     (output/'.nojekyll').touch()
     print(f'Fertig: {output}; Datenstand {data["as_of"]}; {len(data["teams"])} Teams')
 

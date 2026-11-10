@@ -113,7 +113,7 @@ def team_players(snapshot, tid, cutoff=None):
                and not m.get('byeHome') and not m.get('byeAway')]
     history.sort(key=lambda m: date(m['datePlanned']))
     gaps = []
-    for match in history:
+    for match_index, match in enumerate(history):
         report = snapshot['reports'].get(str(match['id']))
         structure = match.get('phase', {}).get('matchReportStructure', '8xEZ;4xDP;8xEZ')
         expected_games = sum(int(n) for n in re.findall(r'(\d+)x[A-Z]+', structure))
@@ -205,3 +205,199 @@ def scenario(own, opponents):
     total, assignment = optimal_assignment(matrix)
     return dict(expected=total, matrix=matrix,
                 pairs=[dict(own=own[i]['name'], opponent=opponents[j]['name'], p=matrix[i][j]) for i, j in enumerate(assignment)])
+
+
+# --- Positions- und Aufstellungsprognose (8 Einzel je Block) ---
+
+def _single_blocks(report, slots=8):
+    """Return ordered single blocks. API list order is the documented fallback.
+
+    Never derive a position from an opaque database ID. If all rows in a block
+    contain a suitable explicit position/order, prefer it over list order.
+    """
+    blocks = {}
+    for row in report:
+        if row.get('matchTypeCd') != 'EZ':
+            continue
+        block = row.get('matchReportBlock') or {}
+        bid = block.get('id')
+        if bid is None:
+            return None, 'Einzelblock-ID fehlt'
+        blocks.setdefault(bid, []).append(row)
+    if len(blocks) != 2 or any(len(rows) != slots for rows in blocks.values()):
+        return None, f'Erwartet werden zwei Einzelblöcke mit jeweils {slots} Einzeln'
+
+    result = []
+    fallback = False
+    block_rows = list(blocks.values())
+    # Prefer explicit block order when the API supplies it.
+    for field in ('number', 'sortOrder', 'order'):
+        labels = [rows[0].get('matchReportBlock', {}).get(field) for rows in block_rows]
+        if all(isinstance(v, int) and not isinstance(v, bool) for v in labels) and len(set(labels)) == len(labels):
+            block_rows.sort(key=lambda rows: rows[0]['matchReportBlock'][field])
+            break
+    for rows in block_rows:
+        ordered = None
+        for field in ('number', 'matchNumber', 'position', 'sortOrder', 'order'):
+            values = [r.get(field) for r in rows]
+            if not all(isinstance(v, int) and not isinstance(v, bool) for v in values):
+                continue
+            if len(set(values)) != slots:
+                continue
+            ascending = sorted(values)
+            if ascending != list(range(ascending[0], ascending[0] + slots)):
+                continue
+            ordered = sorted(rows, key=lambda r: r[field])
+            break
+        if ordered is None:
+            ordered = rows
+            fallback = True
+        result.append(ordered)
+    return result, ('API-Reihenfolge verwendet, da keine eindeutige Positionsnummer vorliegt'
+                    if fallback else None)
+
+
+def opponent_positions(snapshot, tid, cutoff=None, slots=8, half_life=5, prior=0.5):
+    """Historical positions for players on team tid, in both 8-single blocks.
+
+    position_probabilities: P(position | player is selected for a single block).
+    slot_probabilities: heuristic P(player | occupied position), normalized over
+    all eligible players with usable history; not a joint lineup prediction.
+
+    Older team matches are exponentially downweighted (half_life in matches).
+    Return probability None when the player has no reliably assigned position.
+    """
+    if slots != 8:
+        raise ValueError('Diese Liga-Auswertung erwartet genau 8 Einzelpositionen.')
+    if half_life <= 0 or prior < 0:
+        raise ValueError('half_life muss positiv, prior nicht negativ sein.')
+    cutoff = cutoff or datetime.now(timezone.utc)
+    players, gaps = team_players(snapshot, tid, cutoff=cutoff)
+    by_name = defaultdict(list)
+    for player in players:
+        by_name[norm(player['name'])].append(player)
+    history = sorted((m for m in matches(snapshot)
+                      if side(m, tid) and m.get('statusCd') == 'FINISH'
+                      and date(m.get('datePlanned')) and date(m['datePlanned']) < cutoff
+                      and (not date(m.get('endDate')) or date(m['endDate']) < cutoff)
+                      and not m.get('byeHome') and not m.get('byeAway')),
+                     key=lambda m: date(m['datePlanned']))
+    counts = {p['id']: [0] * slots for p in players}
+    weighted = {p['id']: [0.] * slots for p in players}
+    per_block = {p['id']: [[0] * slots for _ in range(2)] for p in players}
+    position_history = {p['id']: [] for p in players}
+    valid_matches = 0
+    for match_index, match in enumerate(history):
+        report = snapshot['reports'].get(str(match['id']))
+        structure = match.get('phase', {}).get('matchReportStructure', '8xEZ;4xDP;8xEZ')
+        expected = sum(int(n) for n in re.findall(r'(\d+)x[A-Z]+', structure))
+        if not complete_report(report, expected):
+            gaps.append(f"Spiel {match['id']}: kein vollständiger Bericht für Positionsanalyse")
+            continue
+        blocks, note = _single_blocks(report, slots)
+        if blocks is None:
+            gaps.append(f"Spiel {match['id']}: {note}")
+            continue
+        if note:
+            gaps.append(f"Spiel {match['id']}: {note}")
+        key = side(match, tid)
+        event = []
+        ambiguous = False
+        for block_index, rows in enumerate(blocks):
+            for pos, row in enumerate(rows, 1):
+                candidates = by_name[norm(row[key].get('displayName', ''))]
+                if len(candidates) != 1:
+                    ambiguous = True
+                    gaps.append(f"Spiel {match['id']}: Spielername in Einzel nicht eindeutig: "
+                                + row[key].get('displayName', ''))
+                    break
+                event.append((candidates[0]['id'], block_index, pos))
+            if ambiguous:
+                break
+        if ambiguous:
+            continue  # Never partially count a match with unresolved identities
+        age = len(history) - 1 - match_index
+        weight = 0.5 ** (age / half_life)
+        valid_matches += 1
+        for pid, block_index, pos in event:
+            counts[pid][pos - 1] += 1
+            weighted[pid][pos - 1] += weight
+            per_block[pid][block_index][pos - 1] += 1
+            position_history[pid].append(dict(match_id=match['id'], date=match['datePlanned'],
+                                              block=block_index + 1, position=pos))
+
+    output = []
+    for player in players:
+        pid = player['id']
+        n = sum(counts[pid])
+        effective = sum(weighted[pid])
+        if n:
+            denom = effective + slots * prior
+            conditional = [(v + prior) / denom for v in weighted[pid]] if denom else None
+            most = max(range(slots), key=lambda i: (weighted[pid][i], -i)) + 1
+        else:
+            conditional, most = None, None
+        output.append(dict(id=pid, name=player['name'], active=player['active'],
+                           attendance=player['attendance'], single_appearances=n,
+                           observed_positions=counts[pid],
+                           position_probabilities=conditional, most_likely_position=most,
+                           blocks=per_block[pid], history=position_history[pid],
+                           games=player['games'], wins=player['wins'], strength=player['strength']))
+
+    # Heuristic position probability: attendance prior times conditional slot distribution.
+    # Exclude players not currently in the squad. No prediction for zero-history players.
+    for index in range(slots):
+        scores = [(p['attendance']['p'] or 0) * p['position_probabilities'][index]
+                  if p['active'] and p['position_probabilities'] is not None else 0.
+                  for p in output]
+        denominator = sum(scores)
+        for p, score in zip(output, scores):
+            p.setdefault('slot_probabilities', []).append(score / denominator if denominator else None)
+
+    slot_favorites = []
+    for index in range(slots):
+        ranked = sorted((dict(id=p['id'], name=p['name'], probability=p['slot_probabilities'][index])
+                         for p in output if p['slot_probabilities'][index] is not None),
+                        key=lambda p: -p['probability'])
+        slot_favorites.append(dict(position=index+1, candidates=ranked))
+    output.sort(key=lambda p: (not p['active'], -(p['attendance']['p'] or 0), p['name']))
+    return dict(team_id=tid, matches_used=valid_matches, position_count=slots,
+                explanation={'position_probabilities': 'P(Position | Einzeleinsatz im Block), geglättet und nach Aktualität gewichtet',
+                             'slot_probabilities': 'heuristischer Anteil pro Position unter aktiven Spielern mit Historie',
+                             'attendance': 'geschätzte Teilnahmechance anhand vollständiger Mannschaftsspiele'},
+                players=output, slot_favorites=slot_favorites,
+                gaps=list(dict.fromkeys(gaps)))
+
+
+def next_opponent_positions(snapshot, own_team_id, cutoff=None):
+    """Find the next opposing team and forecast its slots 1..8."""
+    upcoming = next_match(snapshot, own_team_id, now=cutoff)
+    if upcoming is None:
+        return None
+    own_side = side(upcoming, own_team_id)
+    opponent = upcoming['participantGuest' if own_side == 'participantHome' else 'participantHome']
+    result = opponent_positions(snapshot, opponent['id'], cutoff=cutoff)
+    result['fixture'] = dict(match_id=upcoming['id'], date=upcoming.get('datePlanned'),
+                             opponent=opponent.get('displayName'), home=own_side == 'participantHome')
+    return result
+
+
+if __name__ == '__main__':
+    import argparse
+    import json
+    from pathlib import Path
+    parser = argparse.ArgumentParser(description='3K-Darts Gegnerpositionen und Auftrittsprognose')
+    parser.add_argument('snapshot', type=Path, help='Pfad zu snapshot.json')
+    parser.add_argument('--team-id', required=True, type=int, help='Eigene Teilnehmer-ID für das nächste Spiel')
+    parser.add_argument('--output', type=Path, help='Ergebnis als JSON speichern')
+    args = parser.parse_args()
+    from api import load
+    result = next_opponent_positions(load(args.snapshot), args.team_id)
+    if result is None:
+        parser.error('Kein zukünftiges Spiel für diese Mannschaft in diesem Snapshot gefunden.')
+    serialized = json.dumps(result, indent=2, ensure_ascii=False)
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(serialized, encoding='utf-8')
+    else:
+        print(serialized)
